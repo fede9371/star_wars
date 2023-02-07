@@ -1,0 +1,26 @@
+
+
+body {
+  background: url("http://wallpapercave.com/wp/pEeUsp1.jpg");
+  font-size: 16px;
+}
+
+
+
+
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+slides > slide:not(.nobackground):after {
+  content: ""
+}
+
+
+
+slides > slide:not(.nobackground):before {
+  width: 0px;
+  height: 0px;
+  background-size: 0px 0px;
+  text-align: center;
+}

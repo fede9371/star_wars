@@ -1,0 +1,484 @@
+---
+title: "Analisi dell'inclusione e della diversità nell'impero galattico"
+date: "08/02/2023"
+output:
+  ioslides_presentation:
+    css: scrollable_slides.css
+    self_contained: false
+    smaller: true 
+    transition: slower
+  slidy_presentation: default
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,warning = FALSE, message = FALSE)
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(tidyverse)
+library(plotly)
+library(hrbrthemes)
+library(corrplot)
+library(ggpubr)
+library(gridExtra)
+library(wordcloud)
+library(RColorBrewer)
+library(tm)
+library(treemap)
+library(d3treeR)
+library(corrplot)
+library(viridis)
+library(packcircles)
+library(ggiraph)
+```
+
+```{r include=FALSE}
+characters=read_csv("StarWarsCharacters.csv")
+planets=read_csv("StarWarsPlanets.csv")
+species=read_csv("StarWarsSpecies.csv")
+```
+
+```{r echo=FALSE}
+#pulisco i dati sostituendo NA con None
+characters<-mutate_all(characters, ~replace(., is.na(.), "NA"))
+planets<-mutate_all(planets, ~replace(., is.na(.), "NA"))
+```
+## Obiettivo
+Con l'avvento del 2023 e il crescente interesse per le seguenti tematiche l'impero galattico ha deciso di analizzare l'inclusione e la diversità riferita alla popolazione, alle specie e alla varietà dei pianeti.
+
+Della **popolazione** dell'impero sono stati considerati solo gli **87** individui più famosi, **61 pianeti** e **37 specie**.
+
+**Step dell'analisi:**
+
+1. Per prima cosa analizzeremo i pianeti della galassia per capire quali sono e com'è distributita la popolazione.
+2. Poi verranno analizzati gli 87 protagonisti dell'analisi in termini di colore della pelle, genere, colore dei capelli, colore degli occhi, peso e altezza, pianeta di provenienza e specie.
+3. Per ultime verranno analizzate le specie, la loro classificazione e i flussi migratori.
+![](video..)
+
+## I pianeti dell'Impero Galattico
+Nella rappresentazione sottostante sono presenati alcuni pianeti la cui dimensione dipende dal diametro.
+
+Tra i 61 pianeti considerati della galassia Bespin è quello più grande in termini di diametro. Questo pianeta è un gigante gassoso situato nell'Orlo Esterno e circondato da un numero imprecisato di lune.
+Altri pianeti, come Toydaria e Endor, sono molto più piccoli.
+
+```{r}
+planets=read_csv("StarWarsPlanets.csv")
+planets<-mutate_all(planets, ~replace(., is.na(.), "NA"))
+#trasformo diametro e popolazione in numero
+planets$diameter<-as.numeric(planets$diameter)
+planets<-planets%>%filter(planets$diameter!="NA")
+packing_1 <- circleProgressiveLayout(planets$diameter, sizetype='area')
+packing_1$radius <- 0.8*packing_1$radius
+planets <- cbind(planets, packing_1)
+d.gg_1 <- circleLayoutVertices(packing_1, npoints=50)
+planets$text <- paste("Name: ",planets$name, "\n", "popolazione:", planets$population,"\n", "diametro:",planets$diameter, "\n", "climate:", planets$climate)
+
+ggplot() + 
+  geom_polygon_interactive(data = d.gg_1 , aes(x, y,group = id, fill=id,tooltip = planets$text[id], data_id= planets$text[id], color=planets$terrain), colour = "black", alpha = 0.6) +
+  scale_fill_viridis() +
+  geom_text(data = planets, aes(x, y, label = planets$name), size=2, color="black") +
+  theme_void() + 
+  theme(legend.position="none", plot.margin=unit(c(0,0,0,0),"cm") ) + 
+  coord_equal()
+
+
+
+```
+
+
+```{r include=FALSE}
+planets%>%filter(diameter==118000)
+max(planets$diameter, na.rm=TRUE)
+```
+
+```{r include=FALSE}
+planets%>%filter(population==1e+12)
+max(as.numeric(planets$population), na.rm=TRUE)
+```
+
+Il pianeta più popoloso è Coruscant che è il centro di navigazione della Galassia oltre che il pianeta più ricco e influente.
+```{r}
+planets=read_csv("StarWarsPlanets.csv")
+planets<-mutate_all(planets, ~replace(., is.na(.), "NA"))
+planets<-planets%>%filter(planets$population!="NA")
+planets$population<-as.numeric(planets$population)
+#Analisi homeworld
+
+plot_ly(planets,y=~population,x=planets$name,type = 'bar',
+             hovertext= paste("Popolazione:", planets$population), textposition = 'auto',
+             hoverinfo = 'text',
+             marker = list(color = 'rgb(158,202,225)',
+                           line = list(color = 'rgb(8,48,107)', width = 1.5)))%>% layout(title = "Analisi della popolazione dei pianeti",xaxis = list(categoryorder = "array"))
+
+```
+
+I pianeti da cui provengono più personaggi considerati sono Naboo e Tatooine. Il pianeta Naboo è famoso a causa del blocco commerciale da parte della Federazione dei Mercanti a causa di contrasti economici con la Repubblica Galattica mentre Tatooine è il pianeta natale della famiglia Skywalker.
+```{r}
+text <- characters$homeworld
+docs <- Corpus(VectorSource(text))
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, freq = df$freq, min.freq = 1,           max.words=200, random.order=FALSE, rot.per=0.35,            colors=brewer.pal(8, "Dark2"))
+```
+
+Già da questa prima analisi emerge la diversità in termini di mondo di provenienza della popolazione in esame.
+
+## Analisi della diversità della popolazione-1
+La diversità all'interno della popolazione può essere analizzata in termini di:
+
+* colore della pelle;
+* genere;
+* colore dei capelli;
+* colore degli occhi;
+* peso e altezza;
+* pianeta di provenienza;
+* specie.
+
+```{r include=FALSE}
+characters_skin<-characters%>%count(skin_color)
+characters_skin_2<-characters_skin%>%full_join(characters,by=("skin_color"))%>%group_by(skin_color)%>%summarize(personaggi = paste(sort(unique(name)),collapse=", "))
+characters_skin<-characters_skin%>%inner_join(characters_skin_2, by=("skin_color"))%>%arrange(desc(characters_skin$n))
+```
+Nell'impero galattico spicca la diversità del colore della pelle, infatti ci sono 30 tipologie di colore della pelle. Il gruppo più popoloso con 17 personaggi ha la pelle chiara mentre ci sono alcuni personaggi che hanno un colore delle pelle unico, per esempio solo C3PO ha la pelle oro.
+```{r include=FALSE}
+library(forcats)
+
+#diversità in termini di colore della pelle
+ggplot(data=characters_skin, aes(x=skin_color, y=n)) +
+   geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4)+
+   coord_flip()+
+    xlab("frequency") +
+    theme_bw()+ ggtitle("Colore della pelle")
+```
+
+
+```{r echo=FALSE}
+characters_skin<-characters_skin%>%filter(characters_skin$skin_color!="NA")
+plot_ly(characters_skin,y=~n,x=characters_skin$skin_color,type = 'bar',
+             hovertext= paste("Personaggi:",characters_skin$personaggi), textposition = 'auto',
+             hoverinfo = 'text',
+             marker = list(color = 'rgb(255,128,0)',
+                           line = list(color = 'rgb(204,102,0)', width = 1.5)))%>% layout(title = "Analisi del colore della pelle dei personaggi di Star Wars",xaxis = list(categoryorder = "array", categoryarray = characters_skin$n))
+```
+
+Nell'impero sono presenti quattro tipologie di genere:
+
+* male: 71.3%
+* female: 21.8%
+* none (senza genere): 2.3%
+* hermaphrodite: 1.15%
+
+Per il 3.45% della popolazione in esame non è stato riportato il genere.
+```{r echo=FALSE}
+# genere dei personaggi (gender)
+characters_gender<-count(characters,gender)
+characters_gender$fraction = characters_gender$n / sum(characters_gender$n)
+characters_gender$ymax = cumsum(characters_gender$fraction)
+characters_gender$ymin = c(0, head(characters_gender$ymax, n=-1))
+characters_gender$labelPosition <- (characters_gender$ymax + characters_gender$ymin) / 2
+# Compute a good label
+characters_gender$label <- paste0(characters_gender$gender,":\n",round(characters_gender$fraction, digit=3),"%")
+
+colors <- c('rgb(211,94,96)', 'rgb(128,133,133)', 'rgb(144,103,167)', 'rgb(171,104,87)')
+
+
+```
+```{r}
+plot_ly(characters_gender,labels=~gender,values=~fraction,type = 'pie', textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~paste("Totale",gender,":" ,characters_gender$n), 
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      showlegend = FALSE)%>% layout(title = "Analisi del genere dei personaggi di Star Wars")
+```
+
+Il colore degli occhi più diffuso è marrone mentre la maggior parte dei personaggi non ha i capelli (molte specie infatti sono prive di capelli, ad esempio la specie Hutt di Jabba o i robot).
+```{r echo=FALSE}
+#analisi di hair color  e eye color in due grafici adiacenti 
+characters<-mutate_all(characters, ~replace(., is.na(.), "NA"))
+characters_hair<-count(characters,hair_color)%>%filter(hair_color!="NA")
+g1<-ggplot(characters_hair, aes(x = hair_color, y =n)) +
+  geom_segment(aes(x = hair_color, xend = hair_color, y = 0, yend = n),color = "darkgoldenrod1", lwd = 1) +
+  geom_point(size = 7.5, color="darkorange") +
+  geom_text(aes(label =n ), color = "white") +
+  scale_x_discrete(labels=characters_hair$hair_color) +
+  coord_flip() +
+  xlab("Colore dei capelli")+
+  ylab("Frequenza")+
+  theme_minimal()
+
+characters_eye<-count(characters,eye_color)%>%filter(eye_color!="NA")%>%arrange(desc(n))
+g2<-ggplot(characters_eye, aes(x = eye_color, y =n)) +
+  geom_segment(aes(x = eye_color, xend = eye_color, y = 0, yend = n),color = "darkgoldenrod1", lwd = 1) +
+  geom_point(size = 7.5, color="darkorange") +
+  geom_text(aes(label =n ), color = "white") +
+  scale_x_discrete(labels=characters_eye$eye_color) +
+  coord_flip() +
+  xlab("Colore degli occhi")+
+  ylab("Frequenza")+
+  theme_minimal()
+
+
+ggarrange(g1, g2)
+```
+
+## Analisi della diversità della popolazione-2
+È presente una diversità anche in termini di altezza e peso della popolazione che può essere analizzata rispetto alla specie e al genere dei personaggi.
+
+Nella visualizzazione sottostante è stata calcolata l'altezza media e visualizzato lo scostamento positivo o negativo rispetto ad essa in modo da identificare in modo veloce gli outlier: il personaggio più alto è Yarael Poof con un'altezza di 264cm	mentre Yoda è il personaggio più basso con un'altezza di 66cm.
+
+```{r echo=FALSE}
+#Analisi dell'altezza
+characters=read_csv("StarWarsCharacters.csv")
+characters<-characters%>%mutate(mycolor = ifelse(characters$height>mean(characters$height,na.rm=TRUE), "red", "green"))
+plot1<-ggplot(characters, aes(y=height, x=name)) +
+  geom_segment(aes(y=mean(height,na.rm=TRUE), yend=height, x=name, xend=name), color=characters$mycolor)+
+  geom_point()+
+  theme_minimal()+
+  theme(text = element_text(size=5),axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Altezza")
+plotly::ggplotly(plot1)
+
+```
+
+Analizzando la distribuzione rispetto al genere è evidente che il genere maschile è in media più alto.
+
+```{r echo=FALSE}
+characters_4<-characters%>%filter(gender!="NA")
+
+plot2<-ggplot(characters_4,aes(x=height, colour=gender,)) +
+    geom_density( alpha=0.8)+
+    ggtitle("Distribuzione dell'altezza rispetto al genere")+
+    theme_ipsum()
+plotly::ggplotly(plot2)
+```
+
+In media la specie più alta è Hutt, cioè quella Jabba Desilijic Tiure.
+```{r}
+ggplot(data=species, aes(x=name, y=average_height)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4)+
+    coord_flip()+
+    xlab("Specie") +
+    ylab("Altezza media") +
+    theme_bw()+ ggtitle("Aletezza media delle specie")
+```
+
+Jabba Desilijic Tiure risulta il più in pesante con una massa di 1358kg mentre il più leggero è Ratts Tyerell con un peso di 15kg.
+```{r echo=FALSE}
+#Analisi del peso
+characters=read_csv("StarWarsCharacters.csv")
+characters<-characters%>%mutate(mycolor = ifelse(characters$mass>mean(characters$mass,na.rm=TRUE), "red", "green"))
+plot11<-ggplot(characters, aes(y=mass, x=name)) +
+  geom_segment(aes(y=mean(characters$mass,na.rm=TRUE), yend=characters$mass, x=characters$name, xend=characters$name), color=characters$mycolor)+
+  geom_point()+
+  theme_minimal()+
+  theme(text = element_text(size=5),axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Peso")
+plotly::ggplotly(plot11)
+```
+È stata evitata l'analisi della distribuzione del peso per genere!
+```{r include=FALSE}
+#Analisi del peso
+characters_peso<-characters%>%filter(!is.na(gender))
+plot12<-ggplot(characters_peso,aes(x=mass, color=gender)) +
+    geom_density(alpha=0.8)+
+    ggtitle("Distribuzione del peso")+
+    theme_ipsum()
+plotly::ggplotly(plot12)
+
+```
+```{r include=FALSE}
+peso_medio_specie<-characters%>%group_by(species)%>%summarize(peso_medio=mean(mass))%>%na.omit(peso_medio)
+```
+
+La specie in media più pesante è la specie Hutt di Jabba Desilijic Tiure che è un outlier sia per il peso che per l'altezza.
+```{r echo=FALSE}
+ggplot(data=peso_medio_specie, aes(x=species, y=peso_medio)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4)+
+    coord_flip()+
+    xlab("Specie") +
+    ylab("Peso medio") +
+    theme_bw()+ ggtitle("Peso medio delle specie")
+```
+
+Non sembra esserci una correlazione tra altezza e peso della popolazione
+```{r eval=FALSE, include=FALSE}
+#Correlazione tra altezza e peso
+ggplot(characters, aes(x=height, y=mass)) + 
+    geom_point(size=3,color="coral1") +
+    theme_ipsum()+
+    ggtitle("Correlazione tra altezza e peso")
+```
+
+```{r echo=FALSE}
+characters_sub<-characters[,c('height','mass')]%>%drop_na()
+cor(characters_sub, method = c("pearson"))
+```
+Escludendo Jabba Desilijic Tiure che è un outlier emerge una correlazione tra peso e altezza.
+```{r echo=FALSE}
+characters_senza_jabba<-characters%>%filter(name!="Jabba Desilijic Tiure")
+characters_sub<-characters_senza_jabba[,c('height','mass')]%>%drop_na()
+cor(characters_sub, method = c("pearson"))
+```
+
+```{r eval=FALSE, include=FALSE}
+#correlazione altezza con gravità del pianeta di origine della specie
+car_home_spec=characters%>%select(name, species, homeworld, height)%>%rename("homeworld_char"="homeworld")
+spec_home=species%>%select(name, homeworld)%>%rename("homeworld_species"="homeworld")%>%rename("species"="name")
+df_6=car_home_spec%>%full_join(spec_home, by=c("species"))
+df_6<-df_6%>%filter(homeworld_species!="NA")%>%filter(homeworld_char!="NA")%>%select(name,homeworld_species,height)
+df_sub<-planets%>%rename("homeworld_species"="name")%>%inner_join(df_6, by="homeworld_species")%>%select("height", "gravity")
+```
+
+```{r eval=FALSE, include=FALSE}
+df_sub<-df_sub%>%mutate(gravità = str_extract_all(df_sub$gravity, '\\d+([.,]\\d+)?')) %>%
+  unnest() %>%
+  mutate(gravità = as.numeric(gravità))
+
+df_sub<-df_sub[,c('gravità','height')]%>%drop_na()
+cor(df_sub, method = c("pearson"))
+```
+
+```{r include=FALSE}
+library(data.tree)
+library(circlepackeR)     
+library(widgetframe)
+library(visNetwork, quietly = TRUE)
+characters=read_csv("StarWarsCharacters.csv")%>%na.omit()
+n_wordl<-count(characters, homeworld)
+df_new<- characters%>%select(name,homeworld,species)%>%add_column(root ="root")%>%inner_join(n_wordl, by="homeworld")
+df_new$pathString <- paste("world",df_new$homeworld, df_new$species,df_new$name, sep = "/")
+pop_2<- as.Node(df_new)
+
+frameWidget(circlepackeR(pop_2, size="n",color_min = "hsl(56,80%,80%)", color_max = "hsl(341,30%,40%)"))
+
+```
+
+
+## Analisi della diversità delle specie 
+La popolazione analizzata appartiene a 37 specie differenti e ogni specie ha un pianeta di origine differente. Le specie appartengono a due denominazioni differenti: sentient (36) o reptilian (1).
+
+Dall'analisi del grafico è evidente la diversità in termini di specie e una prevalenza della specie umana sugli altri (64.3\%).
+
+
+
+```{r echo=FALSE}
+#Analisi specie
+characters_species<-count(characters,species)
+characters_species$fraction = characters_species$n / sum(characters_species$n)
+characters_species$ymax = cumsum(characters_species$fraction)
+characters_species$ymin = c(0, head(characters_species$ymax, n=-1))
+characters_species$labelPosition <- (characters_species$ymax + characters_species$ymin) / 2
+# Compute a good label
+characters_species$label <- paste0(characters_species$species,":\n",round(characters_species$fraction, digit=3),"%")
+
+plot_ly(characters_species,labels=~species,values=~fraction,type = 'pie', textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~paste("Totale", species,":" ,characters_species$n), 
+        marker = list(line = list(color = '#FFFFFF', width = 1)),
+                      showlegend = FALSE)%>% layout(title = "Analisi delle frequenze delle specie in Star Wars")
+```
+
+
+La popolazione in esame parla 36 lingue differenti, la lingua più parlata è Galactic Basic con 36 personaggi che la parlano (infatti è la lingua più usata nella galassia).
+```{r include=FALSE}
+lang<-species%>%rename("species"="name")%>%inner_join(characters, by="species")%>%count(language)%>%arrange(desc(n))
+```
+
+
+Le specie appartengono a 10 classificazioni differenti in cui i mammiferi sono i più presenti.
+```{r include=FALSE}
+species<-mutate_all(species, ~replace(., is.na(.), "NA"))
+species_class<-count(species, classification)
+species_class_2<-species_class%>%full_join(species,by=("classification"))%>%group_by(classification)%>%summarize(specie = paste(sort(unique(name)),collapse=", "))
+species_class<-species_class%>%inner_join(species_class_2, by=("classification"))
+```
+
+
+```{r echo=FALSE}
+species_class<-species_class%>%filter(classification!="NA")
+plot_ly(species_class,x=~n,y=~classification,type = 'bar',
+             hovertext= paste("Classificazione:", species_class$classification,"- Specie:", species_class$specie), textposition = 'auto',
+             hoverinfo = 'text',
+             marker = list(color = '#FFCCCC',
+                           line = list(color = '#FF3333', width = 1.5)))%>% layout(title = "Analisi della classificazione delle specie")
+```
+Analizzando le classificazioni delle specie degli 87 individui considerati l'analisi si riduce a tre classificazioni: mammiferi, reptiliani e anfibi. All'interno di ogni classificazione è possibile vedere le specie che appartengono a quella classificazione e poi i personaggi che appartengono alla specie. La gerarchia è classificazione--> specie--> personaggi.
+```{r echo=FALSE}
+species=read_csv("StarWarsSpecies.csv")
+characters=read_csv("StarWarsCharacters.csv")
+species_6<- species%>%na.omit()%>%select(name, classification)%>%add_column(root ="root")
+n_class<-species_6%>%count(classification)
+species_6<-species_6%>%inner_join(n_class, by="classification")%>%rename("species_name"="name")
+characters_pp<-characters%>%rename("species_name"="species")%>%select(name, species_name)
+species_6<-species_6%>%inner_join(characters_pp, by="species_name")%>%select(root, classification, species_name,name,n)
+species_6$pathString <- paste("world",species_6$classification, species_6$species_name,species_6$name, sep = "/")
+pop_3<- as.Node(species_6)
+
+frameWidget(circlepackeR(pop_3, size="n",color_min = "hsl(56,80%,80%)", color_max = "hsl(341,30%,40%)"))
+```
+
+
+
+```{r include=FALSE}
+ggplot(data=species_class, aes(x=classification, y=n)) +
+  geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4)+
+  theme_minimal()+
+  theme(text = element_text(size=5),axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Classificazioni delle specie")
+
+```
+
+## Flussi migratori
+
+I flussi migratori sono un buon indicatore di inclusione e sono stati analizzati considerando il pianeta di origine della specie di ogni personaggio rispetto al pianeta associato al personaggio.
+
+Il pianeta Coruscant che è anche il più popoloso ha subito il processo migratorio più evidente con 28 personaggi che hanno abbandonato il pianeta.
+
+In termini di accoglienza il pianeta Tatooine accoglie 8 personaggi originari di Coruscant.
+```{r include=FALSE}
+car_home_spec=characters%>%select(name, species, homeworld)%>%rename("homeworld_char"="homeworld")
+spec_home=species%>%select(name, homeworld)%>%rename("homeworld_species"="homeworld")%>%rename("species"="name")
+df_3=car_home_spec%>%full_join(spec_home, by=c("species"))
+df_3<-df_3%>%filter(homeworld_species!="NA")%>%filter(homeworld_char!="NA")
+```
+
+```{r echo=FALSE}
+library(networkD3)
+library(tidyverse)
+library(viridis)
+library(patchwork)
+library(hrbrthemes)
+library(circlize)
+nodes <- data.frame(name=c(as.character(df_3$homeworld_species), as.character(df_3$homeworld_char)) %>% unique())
+df_3$Source=match(df_3$homeworld_species, nodes$name)-1 
+df_3$Target=match(df_3$homeworld_char, nodes$name)-1
+df_3$Source<-as.numeric(df_3$Source)
+df_3$Target<-as.numeric(df_3$Target)
+df_3$value<-0.8
+#df_3<-df_3%>%filter(Target!=Source)
+
+sankeyNetwork(Links =  as.data.frame(df_3), Nodes = nodes,
+                     Source = "Source", Target = "Target", NodeID="name",Value = 'value',
+                     sinksRight=TRUE, nodeWidth=6, fontSize=10,nodePadding=3)
+```
+
+
+## Conclusioni
+In conclusione, questa analisi ha evidenziato la presenza di una popolazione eterogenea con diversità in termini di specie e caratteristiche fisiche.
+
+La galassia si rivela essere un mondo in cui individui con caratteristiche differenti vivono nello stesso pianeta e in cui sono presenti flussi migratori che suggeriscono una facile inclusione nei pianeti di arrivo.
+
+
+
+
+
